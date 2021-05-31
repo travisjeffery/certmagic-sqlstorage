@@ -9,12 +9,17 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/caddyserver/certmagic"
 	_ "github.com/lib/pq"
 )
 
 func setup(t *testing.T) *Storage {
+	return setupWithOptions(t, Options{})
+}
+
+func setupWithOptions(t *testing.T, options Options) *Storage {
 	connStr := os.Getenv("CONN_STR")
 	if connStr == "" {
 		t.Skipf("must set CONN_STR")
@@ -23,7 +28,7 @@ func setup(t *testing.T) *Storage {
 	if err != nil {
 		t.Fatal(err)
 	}
-	storage, err := NewStorage(db, Options{})
+	storage, err := NewStorage(db, options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +209,7 @@ func TestList(t *testing.T) {
 	}
 }
 
-func TestLock(t *testing.T) {
+func TestLockLocks(t *testing.T) {
 	storage := setup(t)
 	ctx := context.Background()
 	key := "testkey"
@@ -218,6 +223,23 @@ func TestLock(t *testing.T) {
 	if err := storage.Unlock(key); err != nil {
 		t.Fatal(err)
 	}
+	if err := storage.isLocked(storage.db, key); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLockExpires(t *testing.T) {
+	storage := setupWithOptions(t, Options{LockTimeout: 100 * time.Millisecond})
+	ctx := context.Background()
+	key := "testkey"
+	defer storage.Unlock(key)
+	if err := storage.Lock(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.isLocked(storage.db, key); err == nil {
+		t.Fatalf("key should be locked")
+	}
+	time.Sleep(200 * time.Millisecond)
 	if err := storage.isLocked(storage.db, key); err != nil {
 		t.Fatal(err)
 	}
