@@ -1,4 +1,4 @@
-package certmagicsql
+package sqlstorage
 
 import (
 	"context"
@@ -13,7 +13,18 @@ var (
 	_ certmagic.Storage = (*Storage)(nil)
 )
 
-func NewStorage(db *sql.DB, options Options) (*Storage, error) {
+// Database represents the required database API. You can use a *database/sql.DB.
+type Database interface {
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...interface{}) *sql.Row
+	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
+}
+
+// NewStorage creates a new storage instance. The `db` you pass in will likely be a
+// *database/sql.DB. This method will create the required metadata tables if necessary
+// (certmagic_data and certmagic_locks).
+func NewStorage(db Database, options Options) (*Storage, error) {
 	if options.QueryTimeout == 0 {
 		options.QueryTimeout = time.Second * 3
 	}
@@ -29,7 +40,7 @@ func NewStorage(db *sql.DB, options Options) (*Storage, error) {
 }
 
 type Storage struct {
-	db           *sql.DB
+	db           Database
 	queryTimeout time.Duration
 	lockTimeout  time.Duration
 }
