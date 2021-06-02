@@ -1,4 +1,4 @@
-package sqlstorage
+package certmagicsql
 
 import (
 	"bytes"
