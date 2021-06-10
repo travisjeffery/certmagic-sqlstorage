@@ -15,11 +15,11 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func setup(t *testing.T) *Storage {
+func setup(t *testing.T) *postgresStorage {
 	return setupWithOptions(t, Options{})
 }
 
-func setupWithOptions(t *testing.T, options Options) *Storage {
+func setupWithOptions(t *testing.T, options Options) *postgresStorage {
 	connStr := os.Getenv("CONN_STR")
 	if connStr == "" {
 		t.Skipf("must set CONN_STR")
