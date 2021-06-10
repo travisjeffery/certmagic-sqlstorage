@@ -13,8 +13,8 @@ var (
 	_ certmagic.Storage = (*Storage)(nil)
 )
 
-// Database represents the required database API. You can use a *database/sql.DB.
-type Database interface {
+// DB represents the required database API. You can use a *database/sql.DB.
+type DB interface {
 	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
 	QueryRowContext(context.Context, string, ...interface{}) *sql.Row
@@ -24,7 +24,7 @@ type Database interface {
 // NewStorage creates a new storage instance. The `db` you pass in will likely be a
 // *database/sql.DB. This method will create the required metadata tables if necessary
 // (certmagic_data and certmagic_locks).
-func NewStorage(db Database, options Options) (*Storage, error) {
+func NewStorage(db DB, options Options) (*Storage, error) {
 	if options.QueryTimeout == 0 {
 		options.QueryTimeout = time.Second * 3
 	}
@@ -40,14 +40,22 @@ func NewStorage(db Database, options Options) (*Storage, error) {
 }
 
 type Storage struct {
-	db           Database
+	db           DB
 	queryTimeout time.Duration
 	lockTimeout  time.Duration
 }
 
+// Database RDBs this library supports, currently supports Postgres only.
+type Database int
+
+const (
+	Postgres Database = iota
+)
+
 type Options struct {
 	QueryTimeout time.Duration
 	LockTimeout  time.Duration
+	Database     Database
 }
 
 func (s *Storage) ensureTableSetup() error {
