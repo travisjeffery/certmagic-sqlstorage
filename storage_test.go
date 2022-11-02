@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
+	"io/fs"
 	"log"
 	"os"
 	"reflect"
@@ -12,27 +14,30 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-func setup(t *testing.T) *postgresStorage {
-	return setupWithOptions(t, Options{})
+func setup(ctx context.Context, t *testing.T) *postgresStorage {
+	t.Helper()
+	return setupWithOptions(ctx, t, Options{})
 }
 
-func setupWithOptions(t *testing.T, options Options) *postgresStorage {
+func setupWithOptions(ctx context.Context, t *testing.T, options Options) *postgresStorage {
+	t.Helper()
+
 	connStr := os.Getenv("CONN_STR")
 	if connStr == "" {
 		t.Skipf("must set CONN_STR")
 	}
-	db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	storage, err := NewStorage(db, options)
+	storage, err := NewStorage(ctx, db, options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return storage
+	return storage.(*postgresStorage)
 }
 
 func dropTable() {
@@ -41,7 +46,7 @@ func dropTable() {
 		log.Println("must set CONN_STR")
 		return
 	}
-	db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -57,43 +62,50 @@ func TestMain(m *testing.M) {
 }
 
 func TestExists(t *testing.T) {
-	storage := setup(t)
 	var err error
+
+	ctx := context.Background()
+	storage := setup(ctx, t)
+
 	key := "testkey"
-	defer storage.Delete(key)
-	exists := storage.Exists(key)
+	defer storage.Delete(ctx, key)
+
+	exists := storage.Exists(ctx, key)
 	if exists {
 		t.Fatalf("key should not exist")
 	}
-	err = storage.Store(key, []byte("testvalue"))
+	err = storage.Store(ctx, key, []byte("testvalue"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	exists = storage.Exists(key)
+	exists = storage.Exists(ctx, key)
 	if !exists {
 		t.Fatalf("key should exist")
 	}
 }
 
 func TestStoreUpdatesModified(t *testing.T) {
-	storage := setup(t)
 	var err error
-	key := "testkey"
-	defer storage.Delete(key)
 
-	err = storage.Store(key, []byte("0"))
+	ctx := context.Background()
+	storage := setup(ctx, t)
+
+	key := "testkey"
+	defer storage.Delete(ctx, key)
+
+	err = storage.Store(ctx, key, []byte("0"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	infoBefore, err := storage.Stat(key)
+	infoBefore, err := storage.Stat(ctx, key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = storage.Store(key, []byte("00"))
+	err = storage.Store(ctx, key, []byte("00"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	infoAfter, err := storage.Stat(key)
+	infoAfter, err := storage.Stat(ctx, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,26 +118,30 @@ func TestStoreUpdatesModified(t *testing.T) {
 }
 
 func TestStoreExistsLoadDelete(t *testing.T) {
-	storage := setup(t)
 	var err error
-	key := "testkey"
-	val := []byte("testval")
-	defer storage.Delete(key)
 
-	if storage.Exists(key) {
+	ctx := context.Background()
+	storage := setup(ctx, t)
+
+	key := "testkey"
+	defer storage.Delete(ctx, key)
+
+	val := []byte("testval")
+
+	if storage.Exists(ctx, key) {
 		t.Fatalf("key should not exist")
 	}
 
-	err = storage.Store(key, val)
+	err = storage.Store(ctx, key, val)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !storage.Exists(key) {
+	if !storage.Exists(ctx, key) {
 		t.Fatalf("key should exist")
 	}
 
-	load, err := storage.Load(key)
+	load, err := storage.Load(ctx, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,30 +149,34 @@ func TestStoreExistsLoadDelete(t *testing.T) {
 		t.Fatalf("got: %s", load)
 	}
 
-	err = storage.Delete(key)
+	err = storage.Delete(ctx, key)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	load, err = storage.Load(key)
+	load, err = storage.Load(ctx, key)
 	if load != nil {
 		t.Fatalf("load should be nil")
 	}
-	if _, ok := err.(certmagic.ErrNotExist); !ok {
+	if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("err not certmagic.ErrNotExist")
 	}
 }
 
 func TestStat(t *testing.T) {
-	storage := setup(t)
 	var err error
+
+	ctx := context.Background()
+	storage := setup(ctx, t)
+
 	key := "testkey"
+	defer storage.Delete(ctx, key)
+
 	val := []byte("testval")
-	defer storage.Delete(key)
-	if err = storage.Store(key, val); err != nil {
+	if err = storage.Store(ctx, key, val); err != nil {
 		t.Fatal(err)
 	}
-	stat, err := storage.Stat(key)
+	stat, err := storage.Stat(ctx, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,8 +194,10 @@ func TestStat(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	storage := setup(t)
 	var err error
+
+	ctx := context.Background()
+	storage := setup(ctx, t)
 	keys := []string{
 		"testnohit1",
 		"testnohit2",
@@ -184,19 +206,18 @@ func TestList(t *testing.T) {
 		"testhit3",
 	}
 	for _, key := range keys {
-		if err = storage.Store(key, []byte("hit")); err != nil {
+		if err = storage.Store(ctx, key, []byte("hit")); err != nil {
 			t.Fatal(err)
 		}
-
 	}
 	defer func() {
 		for _, key := range keys {
-			if err = storage.Delete(key); err != nil {
+			if err = storage.Delete(ctx, key); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}()
-	list, err := storage.List("testhit", false)
+	list, err := storage.List(ctx, "testhit", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,37 +231,41 @@ func TestList(t *testing.T) {
 }
 
 func TestLockLocks(t *testing.T) {
-	storage := setup(t)
 	ctx := context.Background()
+	storage := setup(ctx, t)
+
 	key := "testkey"
-	defer storage.Unlock(key)
+	defer storage.Unlock(ctx, key)
+
 	if err := storage.Lock(ctx, key); err != nil {
 		t.Fatal(err)
 	}
-	if err := storage.isLocked(storage.db, key); err == nil {
+	if err := storage.isLocked(ctx, storage.db, key); err == nil {
 		t.Fatalf("key should be locked")
 	}
-	if err := storage.Unlock(key); err != nil {
+	if err := storage.Unlock(ctx, key); err != nil {
 		t.Fatal(err)
 	}
-	if err := storage.isLocked(storage.db, key); err != nil {
+	if err := storage.isLocked(ctx, storage.db, key); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestLockExpires(t *testing.T) {
-	storage := setupWithOptions(t, Options{LockTimeout: 100 * time.Millisecond})
 	ctx := context.Background()
+	storage := setupWithOptions(ctx, t, Options{LockTimeout: 100 * time.Millisecond})
+
 	key := "testkey"
-	defer storage.Unlock(key)
+	defer storage.Unlock(ctx, key)
+
 	if err := storage.Lock(ctx, key); err != nil {
 		t.Fatal(err)
 	}
-	if err := storage.isLocked(storage.db, key); err == nil {
+	if err := storage.isLocked(ctx, storage.db, key); err == nil {
 		t.Fatalf("key should be locked")
 	}
 	time.Sleep(200 * time.Millisecond)
-	if err := storage.isLocked(storage.db, key); err != nil {
+	if err := storage.isLocked(ctx, storage.db, key); err != nil {
 		t.Fatal(err)
 	}
 }

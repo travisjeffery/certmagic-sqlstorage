@@ -3,10 +3,13 @@ module github.com/travisjeffery/certmagic-sqlstorage
 go 1.16
 
 require (
-	github.com/caddyserver/certmagic v0.13.1
-	github.com/lib/pq v1.3.0
-	github.com/stretchr/testify v1.5.1 // indirect
-	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2 // indirect
-	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
-	golang.org/x/tools v0.0.0-20200103221440-774c71fcf114 // indirect
+	github.com/caddyserver/certmagic v0.17.2
+	github.com/jackc/pgx/v5 v5.0.2
+	github.com/klauspost/cpuid/v2 v2.1.2 // indirect
+	go.uber.org/atomic v1.10.0 // indirect
+	go.uber.org/multierr v1.8.0 // indirect
+	golang.org/x/crypto v0.0.0-20221012134737-56aed061732a // indirect
+	golang.org/x/net v0.0.0-20221012135044-0b7e1fb9d458 // indirect
+	golang.org/x/sys v0.0.0-20221013171732-95e765b1cc43 // indirect
+	golang.org/x/text v0.3.8 // indirect
 )
